@@ -1,0 +1,43 @@
+<launch>
+  <!-- RPLIDAR Node -->
+  <node name="rplidarNode" pkg="rplidar_ros" type="rplidarNode" output="screen">
+    <param name="serial_port" type="string" value="/dev/ttyUSB0"/>
+    <param name="serial_baudrate" type="int" value="115200"/> <!-- A1/A2: 115200, A3: 256000 -->
+    <param name="frame_id" type="string" value="map"/>
+    <param name="inverted" type="bool" value="false"/>
+    <param name="angle_compensate" type="bool" value="true"/>
+    <remap from="/scan" to="/laserscan"/>
+  </node>
+
+  <!-- Laser Filter Node (optional if you want to filter the laser scans) -->
+  <node pkg="laser_filters" type="scan_to_scan_filter_chain" name="laser_filter">
+    <!-- You can use your custom filter YAML configuration file here if needed -->
+    <!-- <rosparam command="load" file="$(find rplidar_ros)/config/my_laser_config.yaml" /> -->
+    <remap from="scan" to="laserscan" />
+  </node>
+
+  <!-- Obstacle Detection Node -->
+  <node name="lidar_obstacle_extractor" pkg="obstacle_detector" type="obstacle_extractor_node" output="screen">
+    <param name="active" value="true"/>
+    <param name="use_scan" value="true"/>
+    <param name="use_pcl" value="false"/>
+    <param name="use_split_and_merge" value="true"/>
+    <param name="circles_from_visibles" value="true"/>
+    <param name="discard_converted_segments" value="true"/>
+    <param name="transform_coordinates" value="true"/>
+    <param name="min_group_points" value="3"/>
+    <param name="max_group_distance" value="0.55"/>
+    <param name="distance_proportion" value="0.017453"/>
+    <param name="max_split_distance" value="0.4"/>
+    <param name="max_merge_separation" value="0.4"/>
+    <param name="max_merge_spread" value="0.4"/>
+    <param name="max_circle_radius" value="0.8"/>
+    <param name="radius_enlargement" value="0.3"/>
+    <param name="frame_id" value="map"/>
+    <remap from="scan" to="/scan_filtered"/>
+    <remap from="/raw_obstacles" to="/raw_obstacles/lidar_obstacles"/>
+  </node>
+
+  <!-- RViz Node for visualization -->
+  <node name="rviz" pkg="rviz" type="rviz"/>
+</launch>

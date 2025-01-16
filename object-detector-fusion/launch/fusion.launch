@@ -1,0 +1,82 @@
+<launch>
+  <!-- Camera Configuration -->
+  <arg name="camera"              default="camera"/>
+  <arg name="tf_prefix"           default="$(arg camera)"/>
+  <arg name="image_width"         default="640"/>
+  <arg name="image_height"        default="480"/>
+  <arg name="image_fps"           default="30"/>
+
+  <group ns="$(arg camera)">
+    <!-- Include USB Camera Node -->
+    <node name="usb_cam_node" pkg="usb_cam" type="usb_cam_node" output="screen">
+      <param name="video_device" value="/dev/video0"/> <!-- Change if needed -->
+      <param name="image_width" value="$(arg image_width)"/>
+      <param name="image_height" value="$(arg image_height)"/>
+      <param name="framerate" value="$(arg image_fps)"/>
+      <param name="camera_name" value="$(arg camera)"/>
+      <param name="pixel_format" value="yuyv"/> <!-- Adjust as needed based on camera compatibility -->
+    </node>
+  </group>
+
+  <!-- Lidar Node -->
+  <node name="rplidarNode" pkg="rplidar_ros" type="rplidarNode" output="screen">
+    <param name="serial_port" type="string" value="/dev/ttyUSB0"/>
+    <param name="serial_baudrate" type="int" value="115200"/>
+    <param name="frame_id" type="string" value="laser_scanner_frame"/>
+    <param name="inverted" type="bool" value="false"/>
+    <param name="angle_compensate" type="bool" value="true"/>
+    <remap from="/scan" to="/laserscan"/>
+  </node>
+
+  <!-- Remove the realsense2_description part as it's not needed for USB camera -->
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find realsense2_description)/urdf/test_d435_camera.urdf.xacro' use_nominal_extrinsics:=false"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find object-detector-fusion)/rviz/urdf3.rviz" required="true"/>
+
+  <!-- Convert Depth Image to Laser Scan (if needed) -->
+  <node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan">
+    <remap from="image" to="/camera/depth/image_rect_raw"/>
+    <remap from="/scan" to="/camera/depth/laserscan"/>
+    <rosparam>
+      scan_height: 10
+      range_min: 0.1
+      range_max: 12
+    </rosparam>
+  </node>
+
+  <node pkg="object-detector-fusion" type="lidar_tf2_broadcaster.py" name="lidar_broadcast" output="screen"/>
+
+  <!-- Laser Filter -->
+  <node pkg="laser_filters" type="scan_to_scan_filter_chain" name="laser_filter">
+    <rosparam command="load" file="$(find object-detector-fusion)/src/my_laser_config.yaml"/>
+    <remap from="scan" to="laserscan"/>
+  </node>
+
+  <!-- Obstacle Extractor -->
+  <node name="camera_obstacle_extractor" pkg="obstacle_detector" type="obstacle_extractor_node">
+    <param name="active" value="true"/>
+    <param name="use_scan" value="true"/>
+    <param name="use_pcl" value="false"/>
+    <param name="min_group_points" value="20"/>
+    <param name="max_group_distance" value="0.4"/>
+    <param name="frame_id" value="base_link"/>
+    <remap from="scan" to="/camera/depth/laserscan"/>
+    <remap from="/raw_obstacles" to="/raw_obstacles/camera_obstacles"/>
+  </node>
+
+  <node name="lidar_obstacle_extractor" pkg="obstacle_detector" type="obstacle_extractor_node" output="screen">
+    <param name="active" value="true"/>
+    <param name="use_scan" value="true"/>
+    <param name="use_pcl" value="false"/>
+    <param name="min_group_points" value="3"/>
+    <param name="max_group_distance" value="0.55"/>
+    <param name="frame_id" value="laser_scanner_frame"/>
+    <remap from="scan" to="/scan_filtered"/>
+    <remap from="/raw_obstacles" to="/raw_obstacles/lidar_obstacles"/>
+  </node>
+
+  <node pkg="object-detector-fusion" type="pub_pf.py" name="pf_publish"/>
+  <node pkg="object-detector-fusion" type="multipf.py" name="particle_filter" output="screen"/>
+</launch>

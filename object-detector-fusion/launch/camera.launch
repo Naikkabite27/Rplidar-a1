@@ -1,0 +1,41 @@
+<launch>
+  <!-- Arguments -->
+  <arg name="camera" default="webcam"/>
+  <arg name="video_device" default="/dev/video0"/>
+  <arg name="image_width" default="640"/>
+  <arg name="image_height" default="480"/>
+  <arg name="fps" default="30"/>
+
+  <!-- Launch the USB Camera Node -->
+  <group ns="$(arg camera)">
+    <node name="usb_cam" pkg="usb_cam" type="usb_cam_node" output="screen">
+      <param name="video_device" value="$(arg video_device)"/>
+      <param name="image_width" value="$(arg image_width)"/>
+      <param name="image_height" value="$(arg image_height)"/>
+      <param name="fps" value="$(arg fps)"/>
+      <param name="io_method" value="mmap"/>
+      <param name="pixel_format" value="yuyv"/>
+    </node>
+  </group>
+
+  <!-- Launch the OpenCV Node -->
+  <node name="opencv_object_detection" pkg="object-detector-fusion" type="opencv.py" output="screen"/>
+
+
+  <!-- Camera Model (URDF) -->
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find webcam_description)/urdf/webcam_model.urdf.xacro'"/>
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+  <!-- RViz visualization -->
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find webcam_description)/rviz/camera_display.rviz" required="true"/>
+
+  <!-- Optional: Obstacle Detection Node -->
+  <node name="camera_obstacle_extractor" pkg="obstacle_detector" type="obstacle_extractor_node">
+    <param name="active" value="true"/>
+    <param name="use_scan" value="true"/>
+    <param name="use_pcl" value="false"/>
+    <param name="frame_id" value="base_link"/>
+    <remap from="scan" to="/camera/depth/laserscan"/>
+    <remap from="/raw_obstacles" to="/raw_obstacles/camera_obstacles"/>
+  </node>
+</launch>
